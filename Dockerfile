@@ -5,6 +5,7 @@ FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS base
 USER $APP_UID
 WORKDIR /app
 EXPOSE 8080
+ENV ASPNETCORE_URLS=http://+:8080
 
 
 # このステージは、サービス プロジェクトのビルドに使用されます
@@ -25,6 +26,6 @@ RUN dotnet publish "./GrowthNoteV3.csproj" -c $BUILD_CONFIGURATION -o /app/publi
 # このステージは、運用環境または VS から通常モードで実行している場合に使用されます (デバッグ構成を使用しない場合の既定)
 FROM base AS final
 WORKDIR /app
-ENV ASPNETCORE_URLS=http://0.0.0.0:3000
 COPY --from=publish /app/publish .
+ENV ASPNETCORE_HTTP_PORTS=8080
 ENTRYPOINT ["dotnet", "GrowthNoteV3.dll"]

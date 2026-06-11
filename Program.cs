@@ -6,7 +6,9 @@ using Microsoft.EntityFrameworkCore;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Configuration.Sources.Clear();
-builder.Configuration.AddJsonFile("appsettings.json", optional: false, reloadOnChange: true);
+builder.Configuration
+    .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
+    .AddEnvironmentVariables();
 
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
@@ -21,13 +23,11 @@ builder.Services.AddDbContextFactory<AppDbContext>(options =>
 
 var app = builder.Build();
 
-app.UsePathBase("/CGNote");
-
 app.Use(async (context, next) =>
 {
     if (!context.Request.Path.HasValue || context.Request.Path == "/")
     {
-        context.Response.Redirect($"{context.Request.PathBase}/Home", permanent: false);
+        context.Response.Redirect("/Home", permanent: false);
         return;
     }
 
