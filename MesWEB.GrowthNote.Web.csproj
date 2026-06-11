@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Utf8Output>true</Utf8Output>
+    <AssemblyName>GrowthNoteV3</AssemblyName>
+    <RootNamespace>GrowthNoteV3</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\MesWEB.GrowthNote\MesWEB.GrowthNote.csproj" />
+    <ProjectReference Include="..\MesWEB.Shared\MesWEB.Shared.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.6" />
+  </ItemGroup>
+
+</Project>
+

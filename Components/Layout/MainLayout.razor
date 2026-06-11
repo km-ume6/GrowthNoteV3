@@ -1,0 +1,28 @@
+@inherits LayoutComponentBase
+
+<div class="app-container">
+    <main class="main-content">
+        @Body
+    </main>
+</div>
+
+<div id="blazor-error-ui" data-nosnippet>
+    An unhandled error has occurred.
+    <a href="." class="reload">Reload</a>
+    <span class="dismiss">🗙</span>
+</div>
+
+<style>
+    .app-container {
+        display: flex;
+        height: 100vh;
+        width: 100%;
+    }
+
+    .main-content {
+        flex: 1;
+        padding: 2rem;
+        overflow-y: auto;
+        min-width: 0;
+    }
+</style>
