@@ -26,4 +26,5 @@ RUN dotnet publish "./GrowthNoteV3.csproj" -c $BUILD_CONFIGURATION -o /app/publi
 FROM base AS final
 WORKDIR /app
 COPY --from=publish /app/publish .
+ENV ASPNETCORE_URLS=http://+:5056
 ENTRYPOINT ["dotnet", "GrowthNoteV3.dll"]
