@@ -390,6 +390,9 @@ else
                                     <button type="button" class="btn btn-sm btn-primary action-btn-narrow" @onclick="@(() => NavigateToEdit(n.CGNoteId))">
                                         <i class="fas fa-edit me-1"></i>編集
                                     </button>
+                                    <button type="button" class="btn btn-sm btn-info text-white action-btn-narrow" @onclick="@(() => DuplicateNote(n.CGNoteId))">
+                                        <i class="fas fa-copy me-1"></i>複製
+                                    </button>
                                     <button type="button" class="btn btn-sm btn-outline-danger action-btn-narrow" @onclick="@(() => DeleteNote(n.CGNoteId))" @onclick:stopPropagation="true">
                                         <i class="fas fa-trash me-1"></i>削除
                                     </button>
@@ -884,7 +887,7 @@ else
             return;
         }
 
-        var targetUrl = DeviceService.IsAndroid ? $"growth-note-v3/edit/{id}/android" : $"growth-note-v3/edit/{id}";
+        var targetUrl = DeviceService.IsAndroid ? $"growth-note-v3/edit/{id}/android" : $"edit/{id}";
 
         try
         {
@@ -893,6 +896,52 @@ else
         catch (Exception)
         {
             // エラーハンドリング
+        }
+    }
+
+    private async Task DuplicateNote(int id)
+    {
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            
+            // 元のデータを取得（階層データを含む）
+            var original = await db.GrowthNotes
+                .AsNoTracking()
+                .Include(n => n.Parameters)
+                .Include(n => n.Insulation)
+                .FirstOrDefaultAsync(n => n.CGNoteId == id);
+
+            if (original == null) return;
+
+            // 新しいインスタンスとして作成（IDはリセット、作成日時を更新）
+            original.CGNoteId = 0;
+            original.CreatedAt = DateTime.UtcNow;
+            
+            if (original.Parameters != null)
+            {
+                original.Parameters.ParametersId = 0;
+                original.Parameters.CGNoteId = 0;
+            }
+            
+            if (original.Insulation != null)
+            {
+                original.Insulation.InsulationId = 0;
+                original.Insulation.CGNoteId = 0;
+            }
+
+            db.GrowthNotes.Add(original);
+            await db.SaveChangesAsync();
+
+            Logger.LogInformation("Note duplicated: OriginalID={OriginalID}, NewID={NewID}", id, original.CGNoteId);
+
+            // 複製した新しいレコードの編集画面へ遷移
+            NavigateToEdit(original.CGNoteId);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to duplicate note ID {Id}", id);
+            errorMessage = $"複製に失敗しました: {ex.Message}";
         }
     }
 
@@ -949,54 +998,32 @@ else
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
             await using var db = await DbFactory.CreateDbContextAsync(cts.Token);
 
-            var query = db.GrowthNotes
-                .Include(g => g.Parameters)
-                .Include(g => g.Insulation)
-                .AsQueryable();
+            var query = db.GrowthNotes.AsNoTracking();
 
-            // 絞込条件の適用
+            // フィルター適用
             if (isFiltered)
             {
                 if (filterStartDate.HasValue)
-                {
                     query = query.Where(n => n.CrystalGrowthDate >= filterStartDate.Value);
-                }
-
                 if (filterEndDate.HasValue)
-                {
                     query = query.Where(n => n.CrystalGrowthDate <= filterEndDate.Value);
-                }
-
-                if (!string.IsNullOrWhiteSpace(filterOperator))
-                {
+                if (!string.IsNullOrEmpty(filterOperator))
                     query = query.Where(n => n.Operator == filterOperator);
-                }
-
-                if (!string.IsNullOrWhiteSpace(filterMachine))
-                {
+                if (!string.IsNullOrEmpty(filterMachine))
                     query = query.Where(n => n.MachineName == filterMachine);
-                }
-
-                if (!string.IsNullOrWhiteSpace(filterDopants))
-                {
+                if (!string.IsNullOrEmpty(filterDopants))
                     query = query.Where(n => n.Dopants == filterDopants);
-                }
-
-                if (!string.IsNullOrWhiteSpace(filterCrystalLot))
-                {
+                if (!string.IsNullOrEmpty(filterCrystalLot))
                     query = query.Where(n => n.CrystalLot != null && n.CrystalLot.Contains(filterCrystalLot));
-                }
             }
 
-            var filteredNotes = await query.AsNoTracking().ToListAsync(cts.Token);
+            var filteredNotes = await query.ToListAsync(cts.Token);
 
-            // 絞込み中は常に全件表示、絞込み解除時のみ最新表示の設定を適用
-            if (showLatestOnly && !isFiltered)
+            if (showLatestOnly)
             {
-                // 装置名ごとに最新一件のみを取得
+                // 各装置の最新レコードのみ抽出
                 notes = filteredNotes
-                    .Where(n => !string.IsNullOrWhiteSpace(n.MachineName))
-                    .GroupBy(n => n.MachineName)
+                    .GroupBy(n => n.MachineName ?? "Unknown")
                     .Select(g => g.OrderByDescending(n => n.CrystalGrowthDate ?? DateTime.MinValue)
                         .ThenByDescending(n => n.CreatedAt)
                         .First())
