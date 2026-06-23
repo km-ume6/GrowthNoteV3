@@ -1,5 +1,6 @@
 ﻿@page "/"
 @page "/Home"
+@page "/growth-note-v3"
 @rendermode InteractiveServer
 @implements IDisposable
 
@@ -868,7 +869,7 @@ else
             return;
         }
 
-        var targetUrl = DeviceService.IsAndroid ? "growth-note-v3/add/android" : "growth-note-v3/add";
+        var targetUrl = DeviceService.IsAndroid ? "/growth-note-v3/add/android" : "/growth-note-v3/add";
 
         try
         {
@@ -880,14 +881,15 @@ else
         }
     }
 
-    private void NavigateToEdit(int id)
+    private void NavigateToEdit(int id, bool fromDuplicate = false)
     {
         if (!DeviceService.IsDetected)
         {
             return;
         }
 
-        var targetUrl = DeviceService.IsAndroid ? $"growth-note-v3/edit/{id}/android" : $"edit/{id}";
+        var query = fromDuplicate ? "?fromDuplicate=true" : string.Empty;
+        var targetUrl = DeviceService.IsAndroid ? $"/growth-note-v3/edit/{id}/android{query}" : $"/edit/{id}{query}";
 
         try
         {
@@ -936,7 +938,7 @@ else
             Logger.LogInformation("Note duplicated: OriginalID={OriginalID}, NewID={NewID}", id, original.CGNoteId);
 
             // 複製した新しいレコードの編集画面へ遷移
-            NavigateToEdit(original.CGNoteId);
+            NavigateToEdit(original.CGNoteId, fromDuplicate: true);
         }
         catch (Exception ex)
         {

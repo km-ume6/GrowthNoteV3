@@ -604,7 +604,7 @@
 
         if (currentItem == null)
         {
-            Navigation.NavigateTo("Home");
+            Navigation.NavigateTo("/Home");
             return;
         }
 
@@ -733,12 +733,54 @@
             catch { }
         }
 
-        Navigation.NavigateTo("Home");
+        Navigation.NavigateTo("/Home");
     }
 
-    private void Cancel()
+    private async Task Cancel()
     {
-        Navigation.NavigateTo("Home");
+        if (IsDuplicateDraft && currentItem != null)
+        {
+            try
+            {
+                await using var db = await DbFactory.CreateDbContextAsync();
+                var duplicateDraft = await db.GrowthNotes.FindAsync(currentItem.CGNoteId);
+                if (duplicateDraft != null)
+                {
+                    db.GrowthNotes.Remove(duplicateDraft);
+                    await db.SaveChangesAsync();
+                    Logger.LogInformation("Removed duplicate draft on cancel. Id={Id}", currentItem.CGNoteId);
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, "Failed to remove duplicate draft on cancel. Id={Id}", currentItem.CGNoteId);
+            }
+        }
+
+        Navigation.NavigateTo("/Home");
+    }
+
+    private bool IsDuplicateDraft
+    {
+        get
+        {
+            try
+            {
+                var currentUri = Navigation.Uri;
+                if (string.IsNullOrWhiteSpace(currentUri))
+                {
+                    return false;
+                }
+
+                var absoluteUri = Navigation.ToAbsoluteUri(currentUri);
+                return absoluteUri.Query.Contains("fromDuplicate=true", StringComparison.OrdinalIgnoreCase);
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarning(ex, "Failed to parse navigation URI while checking duplicate draft status.");
+                return false;
+            }
+        }
     }
 
     private async Task ImportFromEquipment()
