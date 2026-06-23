@@ -15,6 +15,7 @@
 @inject DeviceDetectionService DeviceService
 @inject IJSRuntime JS
 @inject IWebHostEnvironment HostEnvironment
+@inject Microsoft.Extensions.Configuration.IConfiguration Configuration
 
 <PageTitle>レコード編集</PageTitle>
 
@@ -531,7 +532,6 @@
     private string? importStatusMessage;
     private string? importErrorMessage;
 
-    private const string TargetDirectoryPath = @"\\IKUSEI2026-7\ProServer$";
     private const string SettingsDirectoryName = "App_Data";
     private const string SettingsFileName = "code-playground-settings.json";
     private const int ImportSettingCount = 6;
@@ -562,6 +562,19 @@
     private ElementReference heightPositionWCInput;
     private ElementReference growthStartTimeInput;
     private ElementReference shoulderEndTimeInput;
+
+    private string GetTargetDirectoryPath()
+    {
+        var configuredPath = Configuration["Import:TargetDirectoryPath"] ?? Environment.GetEnvironmentVariable("PROSERVER_PATH");
+        if (!string.IsNullOrWhiteSpace(configuredPath))
+        {
+            return configuredPath.Trim();
+        }
+
+        return OperatingSystem.IsWindows()
+            ? @"\\IKUSEI2026-7\ProServer$"
+            : "/mnt/proserver";
+    }
 
     private Task OnFurnace1SymbolSelected(ChangeEventArgs e)
         => InsertSymbol(furnaceCondition1Input, v => currentItem!.Insulation!.FurnaceCondition1 = v, e);
@@ -809,7 +822,7 @@
             var csvFileName = !string.IsNullOrWhiteSpace(savedSetting?.FileName)
                 ? NormalizeFileName(savedSetting.FileName)
                 : GetCsvFileNameFromMachineName(machineName);
-            var csvPath = Path.Combine(TargetDirectoryPath, csvFileName);
+            var csvPath = Path.Combine(GetTargetDirectoryPath(), csvFileName);
 
             Logger.LogInformation("装置取込開始: Machine={MachineName}, CsvFile={CsvFile}, CsvPath={CsvPath}", machineName, csvFileName, csvPath);
 
