@@ -8,12 +8,14 @@
 @using System.Globalization
 @using System.Text
 @using Microsoft.AspNetCore.Hosting
+@using Microsoft.VisualBasic.FileIO
 @inject IDbContextFactory<AppDbContext> DbFactory
 @inject NavigationManager Navigation
 @inject Microsoft.Extensions.Logging.ILogger<AddGrowthNoteV3_Mobile> Logger
 @inject DeviceDetectionService DeviceService
 @inject IJSRuntime JS
 @inject IWebHostEnvironment HostEnvironment
+@inject Microsoft.Extensions.Configuration.IConfiguration Configuration
 
 <PageTitle>新規レコード（Android版）</PageTitle>
 
@@ -90,6 +92,11 @@
         color: white;
     }
 
+    .mobile-btn-info {
+        background-color: #17a2b8;
+        color: white;
+    }
+
     .mobile-btn:active {
         opacity: 0.8;
     }
@@ -157,6 +164,9 @@
             <button type="button" class="mobile-btn mobile-btn-primary" @onclick="HandleSubmit">
                 <i class="fas fa-save me-2"></i>保存
             </button>
+            <button type="button" class="mobile-btn mobile-btn-info" @onclick="ImportFromEquipment" title="装置から取得">
+                <i class="fas fa-download me-2"></i>装置から取得
+            </button>
             <button type="button" class="mobile-btn mobile-btn-secondary" @onclick="Cancel">
                 <i class="fas fa-times me-2"></i>キャンセル
             </button>
@@ -165,6 +175,14 @@
 
     <div class="mobile-content-panel">
         <div class="mobile-form">
+            @if (!string.IsNullOrWhiteSpace(importStatusMessage))
+            {
+                <div class="alert alert-success" role="alert">@importStatusMessage</div>
+            }
+            @if (!string.IsNullOrWhiteSpace(importErrorMessage))
+            {
+                <div class="alert alert-danger" role="alert">@importErrorMessage</div>
+            }
             <form @onsubmit="HandleSubmit" @onsubmit:preventDefault="true">
                 <!-- 基本情報 -->
                 <div class="mobile-section">
@@ -603,10 +621,13 @@
     };
     private string? growthStartTimeStr;
     private string? shoulderEndTimeStr;
+    private string? importStatusMessage;
+    private string? importErrorMessage;
 
     private const string SettingsDirectoryName = "App_Data";
     private const string SettingsFileName = "code-playground-settings.json";
     private const int ImportSettingCount = 6;
+    private static readonly Encoding FileEncoding = Encoding.GetEncoding(932);
     private readonly int[] importDecimalPositions = new int[ImportSettingCount];
 
     // 既存データのリスト
@@ -811,6 +832,70 @@
         StateHasChanged();
     }
 
+    private async Task ImportFromEquipment()
+    {
+        if (newItem.Parameters == null)
+        {
+            return;
+        }
+
+        importStatusMessage = null;
+        importErrorMessage = null;
+
+        var machineName = newItem.MachineName?.Trim();
+        if (string.IsNullOrWhiteSpace(machineName))
+        {
+            importErrorMessage = "装置名を入力してください。";
+            return;
+        }
+
+        try
+        {
+            var store = await ReadSettingsStoreAsync();
+            var savedSetting = FindSettingByMachineName(store, machineName);
+            var settings = NormalizeColumnSettings(savedSetting?.ColumnSettings);
+
+            var csvFileName = !string.IsNullOrWhiteSpace(savedSetting?.FileName)
+                ? NormalizeFileName(savedSetting.FileName)
+                : GetCsvFileNameFromMachineName(machineName);
+            var csvPath = Path.Combine(GetTargetDirectoryPath(), csvFileName);
+
+            Logger.LogInformation("装置取込開始 (Mobile): Machine={MachineName}, CsvFile={CsvFile}, CsvPath={CsvPath}", machineName, csvFileName, csvPath);
+
+            if (!File.Exists(csvPath))
+            {
+                importErrorMessage = $"CSVファイルが見つかりません: {csvFileName}";
+                Logger.LogWarning("装置取込失敗 (Mobile): CSV未検出 Machine={MachineName}, CsvPath={CsvPath}", machineName, csvPath);
+                return;
+            }
+
+            var lastFields = await ReadLastCsvRowAsync(csvPath);
+            if (lastFields.Length == 0)
+            {
+                importErrorMessage = $"CSVファイルにデータ行がありません: {csvFileName}";
+                Logger.LogWarning("装置取込失敗 (Mobile): CSVにデータ行なし Machine={MachineName}, CsvFile={CsvFile}", machineName, csvFileName);
+                return;
+            }
+
+            ApplyImportDecimalPositions(settings);
+
+            newItem.Parameters.StartPullingSpeed = ReadMappedFloat(lastFields, settings[0]);
+            newItem.Parameters.ShoulderEndPullingSpeed = ReadMappedFloat(lastFields, settings[1]);
+            newItem.Parameters.LastPullingSpeed = ReadMappedFloat(lastFields, settings[2]);
+            newItem.Parameters.FirstRotationalSpeed = ReadMappedFloat(lastFields, settings[3]);
+            newItem.Parameters.ShoulderEndRotationalSpeed = ReadMappedFloat(lastFields, settings[4]);
+            newItem.Parameters.LastRotationalSpeed = ReadMappedFloat(lastFields, settings[5]);
+
+            importStatusMessage = $"装置「{machineName}」の設定で {csvFileName} から取り込みました。";
+            Logger.LogInformation("装置取込成功 (Mobile): Machine={MachineName}, CsvFile={CsvFile}, ColumnCount={ColumnCount}", machineName, csvFileName, lastFields.Length);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "装置データ取り込みに失敗しました (Mobile)。 MachineName: {MachineName}", machineName);
+            importErrorMessage = $"装置からの取り込みに失敗しました: {ex.Message}";
+        }
+    }
+
     private async Task<SettingsStore> ReadSettingsStoreAsync()
     {
         var settingsPath = GetSettingsFilePath();
@@ -852,6 +937,19 @@
         return primary;
     }
 
+    private string GetTargetDirectoryPath()
+    {
+        var configuredPath = Configuration["Import:TargetDirectoryPath"] ?? Environment.GetEnvironmentVariable("PROSERVER_PATH");
+        if (!string.IsNullOrWhiteSpace(configuredPath))
+        {
+            return configuredPath.Trim();
+        }
+
+        return OperatingSystem.IsWindows()
+            ? @"\\IKUSEI2026-7\ProServer$"
+            : "/mnt/proserver";
+    }
+
     private static SavedFileSetting? FindSettingByMachineName(SettingsStore store, string machineName)
     {
         if (store.Files.Count == 0)
@@ -875,6 +973,33 @@
             candidates.Any(c => string.Equals(NormalizeFileName(x.FileName), c, StringComparison.OrdinalIgnoreCase)));
     }
 
+    private static async Task<string[]> ReadLastCsvRowAsync(string filePath)
+    {
+        await using var stream = new FileStream(
+            filePath,
+            FileMode.Open,
+            FileAccess.Read,
+            FileShare.ReadWrite | FileShare.Delete,
+            bufferSize: 4096,
+            useAsync: true);
+
+        using var reader = new StreamReader(stream, FileEncoding, detectEncodingFromByteOrderMarks: true);
+        using var parser = new TextFieldParser(reader)
+        {
+            TextFieldType = FieldType.Delimited,
+            HasFieldsEnclosedInQuotes = true
+        };
+        parser.SetDelimiters(",");
+
+        string[] lastFields = [];
+        while (!parser.EndOfData)
+        {
+            lastFields = parser.ReadFields() ?? [];
+        }
+
+        return lastFields;
+    }
+
     private static List<ColumnSetting> NormalizeColumnSettings(IEnumerable<ColumnSetting>? source)
     {
         var normalized = source?
@@ -894,6 +1019,62 @@
         return normalized;
     }
 
+    private static float? ReadMappedFloat(string[] fields, ColumnSetting setting)
+    {
+        var index = setting.ColumnNumber - 1;
+        if (index < 0 || index >= fields.Length)
+        {
+            return null;
+        }
+
+        var formatted = FormatDecimalValue(fields[index], setting.DecimalPosition);
+        if (string.IsNullOrWhiteSpace(formatted))
+        {
+            return null;
+        }
+
+        if (float.TryParse(formatted, NumberStyles.Float, CultureInfo.InvariantCulture, out var invariantValue))
+        {
+            return invariantValue;
+        }
+
+        if (float.TryParse(formatted, NumberStyles.Float, CultureInfo.CurrentCulture, out var currentCultureValue))
+        {
+            return currentCultureValue;
+        }
+
+        return null;
+    }
+
+    private static string FormatDecimalValue(string? rawValue, int decimalPosition)
+    {
+        var value = rawValue?.Trim() ?? string.Empty;
+        if (string.IsNullOrEmpty(value) || decimalPosition <= 0)
+        {
+            return value;
+        }
+
+        var sign = string.Empty;
+        if (value.StartsWith('-') || value.StartsWith('+'))
+        {
+            sign = value[..1];
+            value = value[1..];
+        }
+
+        if (!value.All(char.IsDigit))
+        {
+            return sign + value;
+        }
+
+        if (value.Length <= decimalPosition)
+        {
+            value = value.PadLeft(decimalPosition + 1, '0');
+        }
+
+        var splitIndex = value.Length - decimalPosition;
+        return $"{sign}{value[..splitIndex]}.{value[splitIndex..]}";
+    }
+
     private static string NormalizeFileName(string? fileName)
     {
         if (string.IsNullOrWhiteSpace(fileName))
@@ -902,6 +1083,27 @@
         }
 
         return Path.GetFileName(fileName.Trim());
+    }
+
+    private static string GetCsvFileNameFromMachineName(string machineName)
+    {
+        var normalizedMachineName = NormalizeFileName(machineName);
+        if (string.IsNullOrWhiteSpace(normalizedMachineName))
+        {
+            return string.Empty;
+        }
+
+        return normalizedMachineName.Contains('.')
+            ? normalizedMachineName
+            : $"{normalizedMachineName}.CSV";
+    }
+
+    private void ApplyImportDecimalPositions(IReadOnlyList<ColumnSetting> settings)
+    {
+        for (var i = 0; i < ImportSettingCount; i++)
+        {
+            importDecimalPositions[i] = Math.Max(0, settings[i].DecimalPosition);
+        }
     }
 
     private string FormatImportedValue(float? value, int settingIndex)
