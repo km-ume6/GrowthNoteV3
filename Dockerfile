@@ -6,7 +6,7 @@ USER $APP_UID
 WORKDIR /app
 #EXPOSE 8080
 #EXPOSE 8081
-EXPOSE 5060
+EXPOSE 5056
 
 # このステージは、サービス プロジェクトのビルドに使用されます
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
