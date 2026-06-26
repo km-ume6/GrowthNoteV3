@@ -1,24 +1,29 @@
+# デバッグ コンテナーをカスタマイズする方法と、Visual Studio がこの Dockerfile を使用してより高速なデバッグのためにイメージをビルドする方法については、https://aka.ms/customizecontainer をご覧ください。
+
+# このステージは、VS から高速モードで実行するときに使用されます (デバッグ構成の既定値)
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS base
+USER $APP_UID
 WORKDIR /app
-EXPOSE 5056
+#EXPOSE 8080
+#EXPOSE 8081
+EXPOSE 5060
 
-ENV ASPNETCORE_URLS=http://0.0.0.0:5056
-ENV ASPNETCORE_HTTP_PORTS=5056
-ENV ASPNETCORE_ENVIRONMENT=Production
-
+# このステージは、サービス プロジェクトのビルドに使用されます
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
-ARG configuration=Release
+ARG BUILD_CONFIGURATION=Release
 WORKDIR /src
-COPY ["GrowthNoteV3.csproj", "./"]
-RUN dotnet restore "GrowthNoteV3.csproj"
+COPY ["GrowthNoteV3.csproj", "."]
+RUN dotnet restore "./GrowthNoteV3.csproj"
 COPY . .
 WORKDIR "/src/."
-RUN dotnet build "GrowthNoteV3.csproj" -c $configuration -o /app/build
+RUN dotnet build "./GrowthNoteV3.csproj" -c $BUILD_CONFIGURATION -o /app/build
 
+# このステージは、最終ステージにコピーするサービス プロジェクトを公開するために使用されます
 FROM build AS publish
-ARG configuration=Release
-RUN dotnet publish "GrowthNoteV3.csproj" -c $configuration -o /app/publish /p:UseAppHost=false
+ARG BUILD_CONFIGURATION=Release
+RUN dotnet publish "./GrowthNoteV3.csproj" -c $BUILD_CONFIGURATION -o /app/publish /p:UseAppHost=false
 
+# このステージは、運用環境または VS から通常モードで実行している場合に使用されます (デバッグ構成を使用しない場合の既定)
 FROM base AS final
 WORKDIR /app
 COPY --from=publish /app/publish .

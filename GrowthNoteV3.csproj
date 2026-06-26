@@ -7,7 +7,13 @@
     <Utf8Output>true</Utf8Output>
     <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
     <DockerfileContext>.</DockerfileContext>
+    <UserSecretsId>fba6abed-ca9c-47ab-8d4b-18b0077f8ff9</UserSecretsId>
   </PropertyGroup>
+
+  <ItemGroup>
+    <None Remove=".dockerignore" />
+    <None Remove="Dockerfile.prod" />
+  </ItemGroup>
 
   <ItemGroup>
     <None Include=".github\copilot-instructions.md" />
