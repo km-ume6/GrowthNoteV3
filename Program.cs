@@ -1,6 +1,7 @@
 ﻿using GrowthNoteV3.Components;
 using GrowthNoteV3.Data;
 using GrowthNoteV3.Services;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -14,6 +15,12 @@ builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 
 builder.Services.AddScoped<DeviceDetectionService>();
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    options.KnownNetworks.Clear();
+    options.KnownProxies.Clear();
+});
 
 var connectionString = builder.Configuration.GetConnectionString("Default")
     ?? throw new InvalidOperationException("接続文字列 'Default' が appsettings.json に設定されていません。");
@@ -22,6 +29,10 @@ builder.Services.AddDbContextFactory<AppDbContext>(options =>
     options.UseSqlServer(connectionString, sqlOptions => sqlOptions.EnableRetryOnFailure()));
 
 var app = builder.Build();
+
+app.UseForwardedHeaders();
+
+app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
 
 app.Use(async (context, next) =>
 {
